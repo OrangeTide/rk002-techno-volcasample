@@ -1,5 +1,5 @@
 /*
- * CC1: Set tempo from 100 to 140 BPM.
+ * CC11: Set tempo from 100 to 140 BPM.
  */
 #include <RK002.h>
 
@@ -23,7 +23,7 @@ struct event pattern_kick0[] = {
   {NOTE_ON, 0, 60, 100, PPQN},
   {NOTE_ON, 0, 60, 100, PPQN * 2},
   {NOTE_ON, 0, 60, 100, PPQN * 3},
-  {PATTERN_END, 0, 0, 0, PPQN * 4}
+  {PATTERN_END, 0, 0, 0, (PPQN * 4) - 1}
 };
 
 struct part {
@@ -31,6 +31,7 @@ struct part {
   unsigned int endTick;
   struct event* pattern;
   byte patternIndex;
+  unsigned int patternDuration;
 };
 
 struct part parts[NUM_PARTS] = {{ 0 }};
@@ -55,7 +56,7 @@ bool RK002_onClock() {
 
     // search for pattern events that should happen on this tick
     struct event patternEvent = parts[i].pattern[parts[i].patternIndex];
-    if (patternEvent.tick == tick) {
+    if (patternEvent.tick == tick % parts[i].patternDuration) {
       switch (patternEvent.type) {
         case NOTE_ON:
           startNote(i, patternEvent.data0, patternEvent.data1);
@@ -79,7 +80,9 @@ bool RK002_onClock() {
 void setup() {
   RK002_clockSetTempo(1200);
   RK002_clockSetMode(1);
+  int patternLength = sizeof(pattern_kick0) / sizeof(struct event);
   parts[0].pattern = pattern_kick0;
+  parts[0].patternDuration = pattern_kick0[patternLength - 1].tick + 1;
 }
 
 void loop() {}
