@@ -5,6 +5,7 @@
 
 #define NUM_PARTS 10
 #define PPQN 24
+#define NOTE_OFF 0x90
 #define NOTE_ON 0x80
 #define PATTERN_END 0xF4
 
@@ -19,16 +20,34 @@ struct event {
 };
 
 struct event pattern_kick0[] = {
-  {NOTE_ON, 0, 60, 100, 0},
-  {NOTE_ON, 0, 60, 100, PPQN},
+  {NOTE_ON, 0, 60, 100, PPQN * 0},
+  {NOTE_OFF, 0, 60, 0, PPQN * 0.25},
+  {NOTE_ON, 0, 60, 100, PPQN * 1},
+  {NOTE_OFF, 0, 60, 0, PPQN * 1.25},
   {NOTE_ON, 0, 60, 100, PPQN * 2},
+  {NOTE_OFF, 0, 60, 0, PPQN * 2.25},
   {NOTE_ON, 0, 60, 100, PPQN * 3},
-  {PATTERN_END, 0, 0, 0, (PPQN * 4) - 1}
+  {NOTE_OFF, 0, 60, 0, PPQN * 3.25},
+  {PATTERN_END, 0, 0, 0, PPQN * 4}
+};
+
+struct event pattern_kick1[] = {
+  {NOTE_ON, 0, 60, 100, PPQN * 0},
+  {NOTE_OFF, 0, 60, 0, PPQN * 0.25},
+  {NOTE_ON, 0, 60, 60, PPQN * 0.75},
+  {NOTE_OFF, 0, 60, 0, PPQN * 0.99},
+  {NOTE_ON, 0, 60, 100, PPQN * 1},
+  {NOTE_OFF, 0, 60, 0, PPQN * 1.25},
+  {NOTE_ON, 0, 60, 100, PPQN * 2},
+  {NOTE_OFF, 0, 60, 0, PPQN * 2.25},
+  {NOTE_ON, 0, 60, 100, PPQN * 3},
+  {NOTE_OFF, 0, 60, 0, PPQN * 3.25},
+  {NOTE_ON, 0, 60, 60, PPQN * 3.5},
+  {NOTE_OFF, 0, 60, 0, PPQN * 3.75},
+  {PATTERN_END, 0, 0, 0, PPQN * 4}
 };
 
 struct part {
-  byte pitch;
-  unsigned int endTick;
   struct event* pattern;
   byte patternIndex;
   unsigned int patternDuration;
@@ -48,23 +67,24 @@ bool RK002_onControlChange(byte channel, byte nr, byte value) {
 
 bool RK002_onClock() {
   for (int i = 0; i < NUM_PARTS; i++) {
+    unsigned int patternTick = tick % parts[i].patternDuration;
     
-    // search for notes that should end on this tick
-    if (parts[i].endTick == tick) {
-      stopNote(i, parts[i].pitch);
+    // reset pattern after duration
+    if (patternTick == 0) {
+      parts[i].patternIndex = 0;
     }
-
-    // search for pattern events that should happen on this tick
-    struct event patternEvent = parts[i].pattern[parts[i].patternIndex];
-    if (patternEvent.tick == tick % parts[i].patternDuration) {
-      switch (patternEvent.type) {
+    
+    // handle pattern events that should happen on this tick
+    struct event e = parts[i].pattern[parts[i].patternIndex];
+    if (e.tick == patternTick) {
+      parts[i].patternIndex++;
+      switch (e.type) {
         case NOTE_ON:
-          startNote(i, patternEvent.data0, patternEvent.data1);
-          parts[i].patternIndex++;
+          RK002_sendNoteOn(i, e.data0, e.data1);
           break;
-
-        case PATTERN_END:
-          parts[i].patternIndex = 0;
+ 
+        case NOTE_OFF:
+          RK002_sendNoteOff(i, e.data0, e.data1);
           break;
 
         default:
@@ -82,22 +102,7 @@ void setup() {
   RK002_clockSetMode(1);
   int patternLength = sizeof(pattern_kick0) / sizeof(struct event);
   parts[0].pattern = pattern_kick0;
-  parts[0].patternDuration = pattern_kick0[patternLength - 1].tick + 1;
+  parts[0].patternDuration = pattern_kick0[patternLength - 1].tick;
 }
 
 void loop() {}
-
-void startNote(byte channel, byte pitch, byte velocity) {
-  // if a note is still playing then first stop it
-  if (parts[channel].endTick > 0) {
-    stopNote(0, pitch);
-  }
-  RK002_sendNoteOn(channel, pitch, velocity);
-  parts[channel].pitch = pitch;
-  parts[channel].endTick = tick + 8;
-}
-
-void stopNote(byte channel, byte pitch) {
-  RK002_sendNoteOff(channel, pitch, 0);
-  parts[channel].endTick = 0;
-}
